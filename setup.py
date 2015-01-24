@@ -5,7 +5,7 @@
 
 
 """
-Copyright (c) 2015, Are Hansen - Honeypot Development
+Copyright (c) 2015, Are Hansen - Honeypot Development.
 
 All rights reserved.
 
@@ -33,13 +33,14 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
-__version__ = '0.0.2'
+__version__ = 'DEV-0.0.3'
 
 
 import logging
 import os
 import shutil
 import sys
+import subprocess
 import time
 
 
@@ -135,7 +136,9 @@ def installcfg():
     ones."""
     cfgdir = '/etc/honssh'
     mvtime = time.strftime('%y%m%d%H%M%S') 
+    usrcfg = '{0}/{1}'.format(cfgdir, 'users.cfg')
     honcfg = '{0}/{1}'.format(cfgdir, 'honssh.cfg')
+    sqlcfg = '{0}/{1}'.format(cfgdir, 'honssh.sql')
     hontac = '{0}/{1}'.format(cfgdir, 'honssh.tac')
 
     if not os.path.isfile('honssh.cfg'):
@@ -148,15 +151,6 @@ def installcfg():
 
     if not os.path.isfile('utils/honssh.sql'):
         log.info('CfgFileWarning: {0} appears to be missing'.format('utils/honssh.sql'))
-
-    if not os.path.isfile('utils/playlog.py'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('utils/playlog.py'))
-
-    if not os.path.isfile('honsshctrl.sh'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('honsshctrl.py'))
-
-    if not os.path.isfile('honeydata.py'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('honeydata.py'))
 
     if os.path.isfile('{0}'.format(honcfg))
         log.info('File {0} exists, creating backup...'.format(honcfg))
@@ -178,30 +172,70 @@ def installcfg():
         log.info('Installing {0}'.format(hontac))
         os.rename('honssh.tac', hontac)
 
+    if os.path.isfile('{0}'.format(sqlcfg))
+        log.info('File {0} exists, creating backup...'.format(sqlcfg))
+        os.rename('{0}'.format(sqlcfg), '{0}-{1}'.format(sqlcfg, mvtime))
+        log.info('{0} was renamed to {0}-{1}'.format(sqlcfg, mvtime))
+        log.info('Installing new version of {0}'.format(sqlcfg))
+        os.rename('honssh.tac', sqlcfg)
+    elif not os.path.isfile('{0}'.format(sqlcfg))
+        log.info('Installing {0}'.format(sqlcfg))
+        os.rename('honssh.tac', sqlcfg)
 
-    # requirements
-    # README
+    if os.path.isfile('{0}'.format(usrcfg))
+        log.info('File {0} exists, creating backup...'.format(usrcfg))
+        os.rename('{0}'.format(usrcfg), '{0}-{1}'.format(usrcfg, mvtime))
+        log.info('{0} was renamed to {0}-{1}'.format(usrcfg, mvtime))
+        log.info('Installing new version of {0}'.format(usrcfg))
+        os.rename('honssh.tac', usrcfg)
+    elif not os.path.isfile('{0}'.format(usrcfg))
+        log.info('Installing {0}'.format(usrcfg))
+        os.rename('honssh.tac', usrcfg)
 
-    # Generates the keys without any passphrase
-    # id_rsa.pub
-    # id_rsa
-    ckeygen -t rsa -f id_rsa -q --no-passphrase
+    if os.path.isfile('{0}/id_rsa'.format(cfgdir)):
+        log.info('{0}/id_rsa already exists, not creating new'.format(cfgdir))
+    elif not os.path.isfile('{0}/id_rsa'.format(cfgdir)):
+        log.info('{0}/id_rsa was not found, generating new keys...'.format(cfgdir))
 
-    # - Utility scripts
-    if os.
-    # playlog.py => playlog
-    # honsshctrl.py => honsshctrl
-    # honeydata.py (bzstats) => honsydata 
+        genkey = 'ckeygen -t rsa -f {0}/id_rsa -q --no-passphrase'.format(cfgdir)
+        subp = subprocess.Popen(
+                    genkey, shell=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT
+                    )
+        
+        for keyinfo in subp.stdout:
+            log.info(keyinfo)
 
 
 def installutils():
-    """Installs the various utils. """
+    """Installs the various utilities. """
     utldir = '/usr/local/bin'
 
-#
-#   FUNCTION: Download and instal GeoLite2-City data base 
-#
+    if not os.path.isfile('utils/playlog.py'):
+        log.info('CfgFileWarning: {0} appears to be missing'.format('utils/playlog.py'))
 
-#
-#   FUNCTION: Install dependencies
-#
+    if not os.path.isfile('honsshctrl.sh'):
+        log.info('CfgFileWarning: {0} appears to be missing'.format('honsshctrl.py'))
+
+    if not os.path.isfile('honeydata.py'):
+        log.info('CfgFileWarning: {0} appears to be missing'.format('honeydata.py'))
+
+    # - Utility scripts
+    #   This process will remove the file extentions of the utilities
+    #   playlog.py => playlog
+    #   honsshctrl.py => honsshctrl
+    #   honeydata.py (old bzstats) => honsydata 
+
+
+def installglc():
+    """Download and install GeoLite2-City database. """
+    # Thomas: The GeoLite2-City database is more accurate than the geoiplooup database
+    #         I've already got a utility thats building iphater rules from a database
+    #         from Maxmind, i'll reconfigure it so that it can preform a similar action
+    #         here. This utility can be configured as a cronjob so that it will pull the
+    #         database each time Maxmind updates it
+
+
+def installdep():
+    """Installs all the required dependencies using pip. """
+    # Might as well do it this way intil i've wrapped my head around the python package
+    # creation.
