@@ -35,24 +35,91 @@ __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
 __version__ = 'DEV-0.0.3'
 
+
+import argparse
+import datetime
+import glob
+import gzip
+import os
 import sys
-import geoip2.database
+import socket
+import urllib
+try:
+    import geoip2.database
+    print 'imported geoip2.database'
+except ImportError, err:
+    print '{0}'.format(err)
+    print 'Resolution: sudo pip install geoip2'
+    sys.exit(1)
 
 
-def main():
-    ipl = sys.argv[1:]
+
+
+def parse_args():
+    """Command line options."""
+    print 'parse_args'
+    parser = argparse.ArgumentParser(description='Get datailed data about a IP address')
+    src = parser.add_argument_group('- Lookups')
+    src.add_argument(
+                    '-I', 
+                    dest='ipadd',
+                    help='One or more IP addresses separate by white space',
+                    nargs='+',
+                    type=str
+                    )
+    src.add_argument(
+                    '-F',
+                    dest='ipfile',
+                    help='File containing one IP address per line',
+                    nargs='?',
+                    type=argparse.FileType('r')
+                    )
+
+    args = parser.parse_args()
+
+    return args
+
+
+def fetcmmdb():
+    """Download the mmdb from Maxmind. """
+    print 'fetcmmdb'
+    rfile = 'http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz'
+    lfile = '/tmp/GeoLite2-City.mmdb.gz'
+
+    try:
+        urllib.urlretrieve(rfile, lfile)
+    except IOError, err:
+        print '{0}'.format(err)
+        sys.exit(1)
+
+    return lfile
+
+
+def extractgz(mmdbgz, mmdbp):
+    print 'extractgz'
+    """Extracts the CSV from the zip archive. """
+    mmdbp = '/home/odin/Downloads/GeoLite2-City.mmdb'
+    inngz = gzip.open(mmdbgz, 'rb')
+    outgz = open(mmdbp, 'wb')
+    outgz.write(inngz.read())
+    inngz.close()
+    outgz.close()
+
+
+def dolookup(ipl, mmdb):
+    print 'dolookup'
 
     reload(sys)
     sys.setdefaultencoding("utf-8")
 
-    readipdb = geoip2.database.Reader('/PATH/TO/YOUR/GeoLite2-City.mmdb')
+    readipdb = geoip2.database.Reader(mmdb)
 
     geloc = {}
     loinfo = {}
 
     for ip in sorted(ipl):
         try:
-            response = readipdb.city(ip)
+            response = readipdb.city(ip.rstrip())
 
             geloc[ip] = { 
                         'ISO': response.country.iso_code, 
@@ -91,5 +158,24 @@ def main():
             print err
             print ''
 
-if __name__ == "__main__":
+
+def check_args(args):
+    mmdbp = '/opt/GeoLite2-City.mmdb'
+    if args.ipadd:
+        print args.ipadd
+
+    if args.ipfile:
+        dolookup(args.ipfile, mmdbp)
+
+
+def main():
+    """Main function. """
+    print 'main'
+    args = parse_args()
+    check_args(args)
+
+
+if __name__ == '__main__':
+    print 'boiler plate'
     main()
+
