@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 
-"""Example using GeoLite2 database. """
+"""Uses the Maxmind GeoLite2 City database to find detailed information about a IP 
+address. """
 
 
 """
@@ -33,7 +34,7 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
-__version__ = 'DEV-0.0.5'
+__version__ = 'DEV-0.0.6'
 
 
 try:
@@ -47,7 +48,7 @@ try:
     import urllib
     import geoip2.database
 except ImportError, err:
-    print 'MissingModule: sudo pip install {0}'.format(str(err).split()[-1])
+    print 'MissingModule: sudo pip install {0}'.format(str(err).split()[-1].split('.')[0])
     sys.exit(1)
 
 
@@ -56,14 +57,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Get datailed data about a IP address')
     src = parser.add_argument_group('- Lookups')
     src.add_argument(
-                    '-I', 
+                    '-i', 
                     dest='ipadd',
                     help='One or more IP addresses separate by white space',
                     nargs='+',
                     type=str
                     )
     src.add_argument(
-                    '-F',
+                    '-f',
                     dest='input',
                     help='File containing one IP address per line',
                     nargs='?',
@@ -144,9 +145,41 @@ def checkdb(mmdbp):
             print '==================================================================\n'
 
 
-def dolookup(ipl, mmdb):
-    """The function receives a list object containing one or more IP addresses, looks 
-    them up in the Maxmind database and outputs the results. """
+
+def checkip(ipl, mmdb):
+    """ """
+    for ip in sorted(ipl):
+        ipdict = dolookup(ip.rstrip(), mmdb)    
+
+        for ipadd, data in ipdict.items():
+            print 'IPv4 address: {0}'.format(ipadd).rstrip()
+
+            if data['ISO']:
+                print '{0:<12}{1}'.format('Code:', data['ISO'])
+
+            if data['CN']:
+                print '{0:<12}{1}'.format('Country:', data['CN'])
+
+            if data['RGN']:
+                print '{0:<12}{1}'.format('Region', data['RGN'])
+
+            if data['CITY']:
+                print '{0:<12}{1}'.format('City:', data['CITY'])
+
+            if data['ZIP']:
+                print '{0:<12}{1}'.format('Postal:', data['ZIP'])
+
+            if data['LAT']:
+                print '{0:<12}{1}'.format('Latitude:', data['LAT'])
+
+            if data['LONG']:
+                print '{0:<12}{1}'.format('Longitude:', data['LONG'])
+            print ''
+
+
+def dolookup(ip, mmdb):
+    """The function receives a string object that should be in the form of a IP addresses, 
+    looks it up in the Maxmind database and returns the result as a dictionary. """
     reload(sys)
     sys.setdefaultencoding("utf-8")
 
@@ -155,47 +188,40 @@ def dolookup(ipl, mmdb):
     geloc = {}
     loinfo = {}
 
-    for ip in sorted(ipl):
-        try:
-            response = readipdb.city(ip.rstrip())
+    try:
+        response = readipdb.city(ip)
 
-            geloc[ip] = { 
-                        'ISO': response.country.iso_code, 
-                        'CN': response.country.name,
-                        'RGN': response.subdivisions.most_specific.name,
-                        'CITY': response.city.name,
-                        'ZIP': response.postal.code,
-                        'LAT': response.location.latitude,
-                        'LONG': response.location.longitude
-                        }
+        geloc[ip] = { 
+                    'ISO': response.country.iso_code, 
+                    'CN': response.country.name,
+                    'RGN': response.subdivisions.most_specific.name,
+                    'CITY': response.city.name,
+                    'ZIP': response.postal.code,
+                    'LAT': response.location.latitude,
+                    'LONG': response.location.longitude
+                    }
+    except geoip2.errors.AddressNotFoundError, err:
+        geloc[err] = {
+                    'ISO': None, 
+                    'CN': None,
+                    'RGN': None,
+                    'CITY': None,
+                    'ZIP': None,
+                    'LAT': None,
+                    'LONG': None
+                    }
+    except ValueError, err:
+        geloc[err] = {
+                    'ISO': None, 
+                    'CN': None,
+                    'RGN': None,
+                    'CITY': None,
+                    'ZIP': None,
+                    'LAT': None,
+                    'LONG': None
+                    }
 
-            for ipadd, data in geloc.items():
-                print 'IPv4 address: {0}'.format(ipadd).rstrip()
-
-                if data['ISO']:
-                    print '{0:<12}{1}'.format('Code:', data['ISO'])
-
-                if data['CN']:
-                    print '{0:<12}{1}'.format('Country:', data['CN'])
-
-                if data['RGN']:
-                    print '{0:<12}{1}'.format('Region', data['RGN'])
-
-                if data['CITY']:
-                    print '{0:<12}{1}'.format('City:', data['CITY'])
-
-                if data['ZIP']:
-                    print '{0:<12}{1}'.format('Postal:', data['ZIP'])
-
-                if data['LAT']:
-                    print '{0:<12}{1}'.format('Latitude:', data['LAT'])
-
-                if data['LONG']:
-                    print '{0:<12}{1}'.format('Longitude:', data['LONG'])
-                print ''
-        except geoip2.errors.AddressNotFoundError, err:
-            print err
-            print ''
+    return geloc
 
 
 def check_args(args):
@@ -209,11 +235,11 @@ def check_args(args):
     
     if args.ipadd:
         checkdb(mmdbp)
-        dolookup(args.ipadd, mmdbp)
+        checkip(args.ipadd, mmdbp)
 
     if args.input:
         checkdb(mmdbp)
-        dolookup(args.input, mmdbp)
+        checkip(args.input, mmdbp)
 
     if args.update:
         dlgz = fetcmmdb(mmdbp)
@@ -228,4 +254,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
