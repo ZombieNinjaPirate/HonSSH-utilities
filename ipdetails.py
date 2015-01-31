@@ -33,25 +33,22 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
-__version__ = 'DEV-0.0.4'
+__version__ = 'DEV-0.0.5'
 
 
-import argparse
-import datetime
-import glob
-import gzip
-import os
-import sys
-import socket
-import urllib
 try:
+    import argparse
+    import datetime
+    import glob
+    import gzip
+    import os
+    import sys
+    import socket
+    import urllib
     import geoip2.database
 except ImportError, err:
-    print '{0}'.format(err)
-    print 'Resolution: sudo pip install geoip2'
+    print 'MissingModule: sudo pip install {0}'.format(str(err).split()[-1])
     sys.exit(1)
-
-
 
 
 def parse_args():
@@ -77,7 +74,7 @@ def parse_args():
     mng.add_argument(
                     '-U',
                     dest='update',
-                    help='Downloads the loopup database from http://maxmind.com',
+                    help='Update database from http://maxmind.com (run as root)',
                     action='store_true'
                     )
 
@@ -86,14 +83,17 @@ def parse_args():
     return args
 
 
-def fetcmmdb():
+def fetcmmdb(mmdbp):
     """Download the mmdb from Maxmind. """
     rfile = 'http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz'
     lfile = '/tmp/GeoLite2-City.mmdb.gz'
 
-    if os.geteuid() != 0:
-        print 'PrivilegeError: You have to be root to update the database!'
-        sys.exit(1)
+    if not os.path.isdir('/etc/bifrozt'):
+        try:
+            os.mkdir('/etc/bifrozt')
+        except OSError, mkerr:
+            print '{0}'.format(mkerr)
+            sys.exit(1)
 
     try:
         print 'Downloading database from http://maxmind.com now...'
@@ -109,15 +109,44 @@ def fetcmmdb():
 def extractgz(mmdbgz, mmdbp):
     """Extracts the CSV from the zip archive. """
     print 'Extracting database into /opt...'
+
+    if os.geteuid() != 0:
+        print 'PrivilegeError: You have to be root to update the database!'
+        sys.exit(1)
+
     inngz = gzip.open(mmdbgz, 'rb')
     outgz = open(mmdbp, 'wb')
     outgz.write(inngz.read())
     inngz.close()
     outgz.close()
-    print 'The database has been updated'
+    print 'The database in {0} has been updated'.format(mmdbp)
+
+
+def checkdb(mmdbp):
+    """Check the age of the database, if the database was modified more than 30 days ago, 
+    inform the user that it should be updated. """
+    if not os.path.exists(mmdbp):
+        print 'MissingDB: Unable to locate the IP lookup database'
+        print 'Use the -U option to get the updated database from http://maxmind.com'
+        sys.exit(1)
+
+    moddb = datetime.datetime.fromtimestamp(os.path.getmtime(mmdbp))
+    today = datetime.datetime.now()
+    mtime = today - moddb
+
+    if 'days' in str(mtime).split(',')[0]:
+        nrday = int(str(mtime).split(',')[0].split()[0])
+
+        if nrday > 29:
+            print '\n=================================================================='
+            print 'UpdateNotification: Maxmind updates the GeoLite database the first'
+            print 'Thursday of the month. Update your database using -U'
+            print '==================================================================\n'
 
 
 def dolookup(ipl, mmdb):
+    """The function receives a list object containing one or more IP addresses, looks 
+    them up in the Maxmind database and outputs the results. """
     reload(sys)
     sys.setdefaultencoding("utf-8")
 
@@ -141,27 +170,28 @@ def dolookup(ipl, mmdb):
                         }
 
             for ipadd, data in geloc.items():
-                print 'IPv4 address:', ipadd
+                print 'IPv4 address: {0}'.format(ipadd).rstrip()
+
                 if data['ISO']:
-                    print '- {0:<12}{1}'.format('Code:', data['ISO'])
+                    print '{0:<12}{1}'.format('Code:', data['ISO'])
 
                 if data['CN']:
-                    print '- {0:<12}{1}'.format('Country:', data['CN'])
+                    print '{0:<12}{1}'.format('Country:', data['CN'])
 
                 if data['RGN']:
-                    print '- {0:<12}{1}'.format('Region', data['RGN'])
+                    print '{0:<12}{1}'.format('Region', data['RGN'])
 
                 if data['CITY']:
-                    print '- {0:<12}{1}'.format('City:', data['CITY'])
+                    print '{0:<12}{1}'.format('City:', data['CITY'])
 
                 if data['ZIP']:
-                    print '- {0:<12}{1}'.format('Postal:', data['ZIP'])
+                    print '{0:<12}{1}'.format('Postal:', data['ZIP'])
 
                 if data['LAT']:
-                    print '- {0:<12}{1}'.format('Latitude:', data['LAT'])
+                    print '{0:<12}{1}'.format('Latitude:', data['LAT'])
 
                 if data['LONG']:
-                    print '- {0:<12}{1}'.format('Longitude:', data['LONG'])
+                    print '{0:<12}{1}'.format('Longitude:', data['LONG'])
                 print ''
         except geoip2.errors.AddressNotFoundError, err:
             print err
@@ -169,21 +199,25 @@ def dolookup(ipl, mmdb):
 
 
 def check_args(args):
-    mmdbp = '/opt/GeoLite2-City.mmdb'
+    """Runs some basic environment checks before parsing the arguments."""        
+    mmdbp = '/etc/bifrozt/GeoLite2-City.mmdb'
+    scrpt = sys.argv[0].split('/')[-1]
+
+    if len(sys.argv) == 1:
+        print 'Usage: {0} -h'.format(scrpt)
+        sys.exit(1)
+    
     if args.ipadd:
+        checkdb(mmdbp)
         dolookup(args.ipadd, mmdbp)
 
     if args.input:
+        checkdb(mmdbp)
         dolookup(args.input, mmdbp)
 
     if args.update:
-        dlgz = fetcmmdb()
+        dlgz = fetcmmdb(mmdbp)
         extractgz(dlgz, mmdbp)
-
-    if not os.path.exists(mmdbp):
-        print 'MissingDB: Unable to locate the IP lookup database'
-        print 'Use the -U option to get the updated database from http://maxmind.com'
-        sys.exit(1)
 
 
 def main():
