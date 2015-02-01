@@ -33,12 +33,14 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
-__version__ = 'DEV-0.0.4'
+__version__ = 'DEV-0.0.3'
 
 
+import apt
 import gzip
 import logging
 import os
+import pip
 import shutil
 import sys
 import subprocess
@@ -59,36 +61,30 @@ log.setLevel(logging.INFO)
 
 # Path to the modules inside the HonSSH main 
 reqdir = {
-         'modules/honssh': '/usr/local/lib/python2.7/dist-packages/honssh', 
-         'modules/hpfeeds': '/usr/local/lib/python2.7/dist-packages/hpfeeds', 
-         'modules/kippo': '/usr/local/lib/python2.7/dist-packages/kippo' 
+         'modules/honssh': '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/lib/python2.7/dist-packages/honssh', 
+         'modules/hpfeeds': '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/lib/python2.7/dist-packages/hpfeeds', 
+         'modules/kippo': '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/lib/python2.7/dist-packages/kippo' 
          }
 
 reqfil = {
-         'conf/honssh.cfg': '/etc/honssh/honssh.cfg',
-         'conf/honssh.tac': '/etc/honssh/honssh.tac', 
-         'conf/users.cfg': '/etc/honssh/users.cfg', 
-         'utils/honsshctrl.sh': '/usr/local/bin/honsshctrl.sh', 
-         'utils/honssh.sql': '/etc/honssh/honssh.sql', 
-         'utils/playlog.py': '/usr/local/bin/playlog.py' 
+         'conf/honssh.cfg': '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/honssh/honssh.cfg',
+         'conf/honssh.tac': '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/honssh/honssh.tac', 
+         'conf/users.cfg': '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/honssh/users.cfg', 
+         'utils/honsshctrl.sh': '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/bin/honsshctrl', 
+         'utils/honssh.sql': '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/honssh/honssh.sql', 
+         'utils/playlog.py': '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/bin/playlog' 
          }
 
 reqdst = [
-         '/usr/local/lib/python2.7/dist-packages', 
-         '/usr/local/bin', 
-         '/etc/honssh', 
-         '/etc/bifrozt/ipdb', 
-         '/var/log/honssh', 
-         '/var/log/honssh/daily', 
-         '/var/log/honssh/application',
-         '/var/log/honssh/attackers' 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/lib/python2.7/dist-packages', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/usr/local/bin', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/honssh', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/bifrozt/ipdb', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/var/log/honssh', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/var/log/honssh/daily', 
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/var/log/honssh/application',
+         '/home/odin/Documents/PYTHON/BZ009/TESTING/var/log/honssh/attackers' 
          ]
-
-
-reqdep = [ 'geoip2', 'MySQLdb', 'twisted' ]
-
-reserr = [ 'sudo pip install geoip2', 'sudo apt-get install python-mysqldb', 
-           'sudo pip install twisted' ]
 
 
 def checkenv():
@@ -114,22 +110,56 @@ def checkenv():
         if os.path.isdir(okdst):
             log.info('DstOkay: {0}'.format(okdst))
 
-    log.info('Checking dependencies...')
 
-    header = 35 * '='
+def checkdeps():
+    reqdep = [ 'geoip2', 'MySQLdb', 'twisted' ]
+
+    log.info('Checking for missing dependencies')
 
     for dep in reqdep:
-        try:
-            __import__(dep)
-            log.info('DependencyOkay: {0} is already installed'.format(dep))
-        except ImportError, err:
-            log.info('DependencyError: {0} does not exist'.format(dep))
-            log.info('{0} DEPENDENCY ERROR {0}'.format(header))
-            log.info('There are missing dependencies. Resolve them with these commands:')
-            for res in reserr:
-                log.info('{0}'.format(res))
-            log.info('{0} DEPENDENCY ERROR {0}'.format(header))
-            sys.exit(1)
+
+
+def pip_install(py_pkg):
+    """Check for missing Python dependencies and installs them if needed. """
+    pfreeze = 'pip freeze'
+
+    log.info('Lookung for {0}'.format(py_pkg))
+    subp = subprocess.Popen(pfreeze, shell=True, stdout=subprocess.PIPE, 
+                            stderr=subprocess.STDOUT)
+    xit = subp.wait()
+
+    if xit != 0:
+        for err in subp.stderr:
+            log.info('ERROR: {0}'.format(err))
+        sys.exit(1)
+
+    if xit == 0:
+        for out in subp.stdout:
+            if py_pkg in out:
+                log.info('Dependency for {0} is met'.format(py_pkg))
+            else:
+                pinstall = 'pip install {0}'.format(py_pkg)
+                log.info('Failed dependency for {0}. Installing {0} now'.format(py_pkg))
+                subp = subprocess.Popen(pfreeze, shell=True, stdout=subprocess.PIPE, 
+                                        stderr=subprocess.STDOUT)
+
+                ixit = subp.wait()
+
+                if ixit == 0:
+                    log.info('Installation of {0}')
+
+def apt_install(pkg_name):
+    """Install package using apt-get. """
+    pkg_name = 'python-mysqldb'
+    cache = apt.cache.Cache()
+
+    if cache.update():
+        pkg = cache[pkg_name]
+
+    if pkg.is_installed:
+        print '{0} has already been installed on this system'.format(pkg_name)
+    else:
+        pkg.mark_install()
 
 
 def installmodules():
@@ -159,6 +189,9 @@ def installmodules():
                 os.rename(loc, bakfil)
                 log.info('Installing new version of {0}'.format(loc))
                 shutil.copyfile(fil, loc)
+            # Set permissions on executables
+            if fil.split('/')[-1][-3:] == '.py' or fil.split('/')[-1][-3:] == '.sh':
+                log.info('Making {0} executable'.format(loc))
 
 
 def fetcmmdb():
@@ -208,9 +241,9 @@ def main():
     checkenv()
     installmodules()
 
-    mmdbp = '/etc/bifrozt/ipdb/GeoLite2-City.mmdb'
-    mmbgz = fetcmmdb()
-    extractgz(mmbgz, mmdbp)
+    mmdbp = '/home/odin/Documents/PYTHON/BZ009/TESTING/etc/bifrozt/ipdb/GeoLite2-City.mmdb'
+    #mmbgz = fetcmmdb()
+    #extractgz(mmbgz, mmdbp)
 
 
 if __name__ == "__main__":
