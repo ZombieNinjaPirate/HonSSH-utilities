@@ -33,14 +33,17 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 __author__ = 'Are Hansen'
 __date__ = '2015, Jan 17'
-__version__ = 'DEV-0.0.3'
+__version__ = 'DEV-0.0.4'
 
 
+import gzip
 import logging
 import os
 import shutil
 import sys
 import subprocess
+import socket
+import urllib
 import time
 
 
@@ -54,188 +57,162 @@ log.addHandler(out_hdlr)
 log.setLevel(logging.INFO)
 
 
+# Path to the modules inside the HonSSH main 
+reqdir = {
+         'modules/honssh': '/usr/local/lib/python2.7/dist-packages/honssh', 
+         'modules/hpfeeds': '/usr/local/lib/python2.7/dist-packages/hpfeeds', 
+         'modules/kippo': '/usr/local/lib/python2.7/dist-packages/kippo' 
+         }
+
+reqfil = {
+         'conf/honssh.cfg': '/etc/honssh/honssh.cfg',
+         'conf/honssh.tac': '/etc/honssh/honssh.tac', 
+         'conf/users.cfg': '/etc/honssh/users.cfg', 
+         'utils/honsshctrl.sh': '/usr/local/bin/honsshctrl.sh', 
+         'utils/honssh.sql': '/etc/honssh/honssh.sql', 
+         'utils/playlog.py': '/usr/local/bin/playlog.py' 
+         }
+
+reqdst = [
+         '/usr/local/lib/python2.7/dist-packages', 
+         '/usr/local/bin', 
+         '/etc/honssh', 
+         '/etc/bifrozt/ipdb', 
+         '/var/log/honssh', 
+         '/var/log/honssh/daily', 
+         '/var/log/honssh/application',
+         '/var/log/honssh/attackers' 
+         ]
+
+
+reqdep = [ 'geoip2', 'MySQLdb', 'twisted' ]
+
+reserr = [ 'sudo pip install geoip2', 'sudo apt-get install python-mysqldb', 
+           'sudo pip install twisted' ]
+
+
 def checkenv():
-    """Check the environment for missing modules and structures. Creates missing
-    structures, calls sys.sexit(1) on missing modules. """
-    logdir = '/var/log/honssh'
-    daydir = '{0}/daily'.format(logdir)
-    attdir = '{0}/attack'.format(logdir)
-    appdir = '{0}/application'.format(logdir)
+    log.info('Checking the installation environment...')
+    for okdir in reqdir:
+        if not os.path.isdir(okdir):
+            log.info('DirError: {0} was not found!'.format(okdir))
+            sys.exit(1)
+        if os.path.isdir(okdir):
+            log.info('DirOkay: {0}'.format(okdir))
 
-    if not os.path.isdir('kippo'):
-        log.info('ModuleError: kippo')
-        sys.exit(1)
+    for okfil in reqfil:
+        if not os.path.isfile(okfil):
+            log.info('FileError: {0} was not found!'.format(okfil))
+            sys.exit(1)
+        if os.path.isfile(okfil):
+            log.info('FileOkay: {0}'.format(okfil))
 
-    if not os.path.isdir('honssh'):
-        log.info('ModuleError: honssh')
-        sys.exit(1)
+    for okdst in reqdst:
+        if not os.path.isdir(okdst):
+            os.makedirs(okdst)
+            log.info('DstWarn: {0} was not found, created {0}'.format(okdst))
+        if os.path.isdir(okdst):
+            log.info('DstOkay: {0}'.format(okdst))
 
-    if not os.path.isdir('hpfeeds'):
-        log.info('ModuleError: hpfeeds')
-        sys.exit(1)
+    log.info('Checking dependencies...')
 
-    if not os.path.isdir(logdir):
-        os.mkdir(logdir)
-        log.info('Created directory: {0}'.format(logdir))
+    header = 35 * '='
 
-    if not os.path.isdir(attdir):
-        os.mkdir(attdir)
-        log.info('Created directory: {0}'.format(attdir))
-
-    if not os.path.isdir(appdir):
-        os.mkdir(appdir)
-        log.info('Created directory: {0}'.format(appdir))
-
-    if not os.path.isdir(daydir):
-        os.mkdir(daydir)
-        log.info('Created directory: {0}'.format(daydir))
+    for dep in reqdep:
+        try:
+            __import__(dep)
+            log.info('DependencyOkay: {0} is already installed'.format(dep))
+        except ImportError, err:
+            log.info('DependencyError: {0} does not exist'.format(dep))
+            log.info('{0} DEPENDENCY ERROR {0}'.format(header))
+            log.info('There are missing dependencies. Resolve them with these commands:')
+            for res in reserr:
+                log.info('{0}'.format(res))
+            log.info('{0} DEPENDENCY ERROR {0}'.format(header))
+            sys.exit(1)
 
 
 def installmodules():
-    """Checks the current environment and create directories as needed. We will assume
-    that any existing modules here are outdated and that the user is applying a newer
-    version thus, any existing modules will be delete and replaced. """
-    moddir = '/usr/local/lib/python2.7/dist-packages'
+    log.info('Installing software components...')
 
-    if os.path.isdir('{0}/{1}'.format(moddir, 'kippo')):
-        log.info('Replacing {0}/{1} with the latest version'.format(moddir, 'kippo'))
-        shutil.rmtree('{0}/{1}'.format(moddir, 'kippo'))
-        shutil.copytree ('kippo', moddir)
-        shutil.rmtree('{0}'.format('kippo'))
-    elif not os.path.exists('{0}/{1}'.format(moddir, 'kippo')):
-        shutil.copytree ('kippo', moddir)
-        shutil.rmtree('{0}'.format('kippo'))
-        log.info('Installed {0} in {1}'.format('kippo', moddir))
+    for mod,dst in reqdir.items():
+        if not os.path.isdir(dst):
+            log.info('Installing {0} in {1}'.format(mod.split('/')[-1], dst))
+            shutil.copytree(mod, dst)
+        elif os.path.isdir(dst):
+            log.info('Replacing {0} with the latest version'.format(dst))
+            shutil.rmtree(dst)
+            shutil.copytree(mod, dst)
 
-    if os.path.exists('{0}/{1}'.format(moddir, 'honssh')):
-        log.info('Replacing {0}/{1} with the latest version'.format(moddir, 'honssh'))
-        shutil.rmtree('{0}/{1}'.format(moddir, 'honssh'))
-        shutil.copytree ('honssh', moddir)
-        shutil.rmtree('{0}'.format('honssh'))
-    elif not os.path.exists('{0}/{1}'.format(moddir, 'honssh')):
-        shutil.copytree ('honssh', moddir)
-        log.info('Installed {0} in {1}'.format('honssh', moddir))
-        shutil.rmtree('{0}'.format('honssh'))
-
-    if os.path.exists('{0}/{1}'.format(moddir, 'hpfeeds'):
-        log.info('Replacing {0}/{1} with the latest version'.format(moddir, 'hpfeeds'))
-        shutil.rmtree('{0}/{1}'.format(moddir, 'hpfeeds'))
-        shutil.copytree ('hpfeeds', moddir)
-        shutil.rmtree('{0}'.format('hpfeeds'))
-    elif not os.path.exists('{0}/{1}'.format(moddir, 'hpfeeds'):
-        shutil.copytree ('hpfeeds', moddir)
-        log.info('Installed {0} in {1}'.format('hpfeeds', moddir))
-        shutil.rmtree('{0}'.format('hpfeeds'))
+    for fil,loc in reqfil.items():
+        if not os.path.isfile(loc):
+            log.info('Installing {0} in {1}'.format(fil.split('/')[-1], loc))
+            shutil.copyfile(fil, loc)
+        elif os.path.isfile(loc):
+            # Lets see if the existing file is a confgiration file
+            if loc.split('/')[-1][-4:] == '.cfg':
+                # If it is, create a backup before installing a clean one.
+                log.info('Existing config file discovered: {0}'.format(loc))
+                bktime = time.strftime('%y%m%d%H%M%S')
+                bakfil = '{0}.{1}'.format(loc, bktime)
+                log.info('Backup of {0} created as {1}'.format(loc, bakfil))
+                os.rename(loc, bakfil)
+                log.info('Installing new version of {0}'.format(loc))
+                shutil.copyfile(fil, loc)
 
 
-def installcfg():
-    """Installs configuration files. Verifies that the current directory contains the
-    application critical files, will call sys.exit(1) if missing. Checks for
-    non-application critical files, will throw warning is missing. Checks for existing
-    configuration files in cfgdir, will rename existing ones before installing the new
-    ones."""
-    cfgdir = '/etc/honssh'
-    mvtime = time.strftime('%y%m%d%H%M%S') 
-    usrcfg = '{0}/{1}'.format(cfgdir, 'users.cfg')
-    honcfg = '{0}/{1}'.format(cfgdir, 'honssh.cfg')
-    sqlcfg = '{0}/{1}'.format(cfgdir, 'honssh.sql')
-    hontac = '{0}/{1}'.format(cfgdir, 'honssh.tac')
+def fetcmmdb():
+    """Download the mmdb from Maxmind. """
+    rfile = 'http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz'
+    lfile = '/tmp/GeoLite2-City.mmdb.gz'
 
-    if not os.path.isfile('honssh.cfg'):
-        log.info('CfgFileError: {0} was not found!'.format('honssh.cfg'))
+    if not os.path.isdir('/etc/bifrozt'):
+        try:
+            os.mkdir('/etc/bifrozt')
+        except OSError, mkerr:
+            log.info('{0}'.format(mkerr))
+            sys.exit(1)
+
+    try:
+        log.info('Downloading GeoLite2 database from http://maxmind.com into /tmp')
+        log.info('This might take up to a few minutes depending on your connection...')
+        urllib.urlretrieve(rfile, lfile)
+        log.info('Download of GeoLite2 database completed')
+    except IOError, err:
+        log.info('{0}'.format(err))
         sys.exit(1)
 
-    if not os.path.isfile('honssh.tac'):
-        log.info('CfgFileError: {0} was not found!'.format('honssh.tac'))
-        sys.exit(1)
-
-    if not os.path.isfile('utils/honssh.sql'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('utils/honssh.sql'))
-
-    if os.path.isfile('{0}'.format(honcfg))
-        log.info('File {0} exists, creating backup...'.format(honcfg))
-        os.rename('{0}'.format(honcfg), '{0}-{1}'.format(honcfg, mvtime))
-        log.info('{0} was renamed to {0}-{1}'.format(honcfg, mvtime))
-        log.info('Installing new version of {0}'.format(honcfg))
-        os.rename('honssh.cfg', honcfg)
-    elif not os.path.isfile('{0}'.format(honcfg))
-        log.info('Installing {0}'.format(honcfg))
-        os.rename('honssh.cfg', honcfg)
-
-    if os.path.isfile('{0}'.format(hontac))
-        log.info('File {0} exists, creating backup...'.format(hontac))
-        os.rename('{0}'.format(hontac), '{0}-{1}'.format(hontac, mvtime))
-        log.info('{0} was renamed to {0}-{1}'.format(hontac, mvtime))
-        log.info('Installing new version of {0}'.format(hontac))
-        os.rename('honssh.tac', hontac)
-    elif not os.path.isfile('{0}'.format(hontac))
-        log.info('Installing {0}'.format(hontac))
-        os.rename('honssh.tac', hontac)
-
-    if os.path.isfile('{0}'.format(sqlcfg))
-        log.info('File {0} exists, creating backup...'.format(sqlcfg))
-        os.rename('{0}'.format(sqlcfg), '{0}-{1}'.format(sqlcfg, mvtime))
-        log.info('{0} was renamed to {0}-{1}'.format(sqlcfg, mvtime))
-        log.info('Installing new version of {0}'.format(sqlcfg))
-        os.rename('honssh.tac', sqlcfg)
-    elif not os.path.isfile('{0}'.format(sqlcfg))
-        log.info('Installing {0}'.format(sqlcfg))
-        os.rename('honssh.tac', sqlcfg)
-
-    if os.path.isfile('{0}'.format(usrcfg))
-        log.info('File {0} exists, creating backup...'.format(usrcfg))
-        os.rename('{0}'.format(usrcfg), '{0}-{1}'.format(usrcfg, mvtime))
-        log.info('{0} was renamed to {0}-{1}'.format(usrcfg, mvtime))
-        log.info('Installing new version of {0}'.format(usrcfg))
-        os.rename('honssh.tac', usrcfg)
-    elif not os.path.isfile('{0}'.format(usrcfg))
-        log.info('Installing {0}'.format(usrcfg))
-        os.rename('honssh.tac', usrcfg)
-
-    if os.path.isfile('{0}/id_rsa'.format(cfgdir)):
-        log.info('{0}/id_rsa already exists, not creating new'.format(cfgdir))
-    elif not os.path.isfile('{0}/id_rsa'.format(cfgdir)):
-        log.info('{0}/id_rsa was not found, generating new keys...'.format(cfgdir))
-
-        genkey = 'ckeygen -t rsa -f {0}/id_rsa -q --no-passphrase'.format(cfgdir)
-        subp = subprocess.Popen(
-                    genkey, shell=True, stdout=subprocess.PIPE,stderr=subprocess.STDOUT
-                    )
-        
-        for keyinfo in subp.stdout:
-            log.info(keyinfo)
+    return lfile
 
 
-def installutils():
-    """Installs the various utilities. """
-    utldir = '/usr/local/bin'
+def extractgz(mmbgz, mmdbp):
+    """Extracts the CSV from the zip archive. """
+    if os.path.isfile(mmdbp):
+        log.info('An older version of {0} exists'.format(mmdbp))
+        log.info('Removing {0} now'.format(mmdbp))
+        os.remove(mmdbp)
+        log.info('{0} was removed'.format(mmdbp))
 
-    if not os.path.isfile('utils/playlog.py'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('utils/playlog.py'))
+    log.info('Extracting latest version of GeoLite2 database to {0}'.format(mmdbp))
 
-    if not os.path.isfile('honsshctrl.sh'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('honsshctrl.py'))
-
-    if not os.path.isfile('honeydata.py'):
-        log.info('CfgFileWarning: {0} appears to be missing'.format('honeydata.py'))
-
-    # - Utility scripts
-    #   This process will remove the file extentions of the utilities
-    #   playlog.py => playlog
-    #   honsshctrl.py => honsshctrl
-    #   honeydata.py (old bzstats) => honsydata 
+    inngz = gzip.open(mmbgz, 'rb')
+    outgz = open(mmdbp, 'wb')
+    outgz.write(inngz.read())
+    inngz.close()
+    outgz.close()
+    log.info('The latest version of GeoLite2 database has been installed'.format(mmdbp))
 
 
-def installglc():
-    """Download and install GeoLite2-City database. """
-    # Thomas: The GeoLite2-City database is more accurate than the geoiplooup database
-    #         I've already got a utility thats building iphater rules from a database
-    #         from Maxmind, i'll reconfigure it so that it can preform a similar action
-    #         here. This utility can be configured as a cronjob so that it will pull the
-    #         database each time Maxmind updates it
+def main():
+    """Main...doing main stuff. """
+    checkenv()
+    installmodules()
+
+    mmdbp = '/etc/bifrozt/ipdb/GeoLite2-City.mmdb'
+    mmbgz = fetcmmdb()
+    extractgz(mmbgz, mmdbp)
 
 
-def installdep():
-    """Installs all the required dependencies using pip. """
-    # Might as well do it this way intil i've wrapped my head around the python package
-    # creation.
+if __name__ == "__main__":
+    main()
+
